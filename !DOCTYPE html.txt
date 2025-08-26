@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ochaya - Social Detox & Relax</title>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{font-family:sans-serif;background:linear-gradient(135deg,#f0f4f0,#e8f5e8)}
+button{cursor:pointer}
+</style>
+</head>
+<body class="min-h-screen flex flex-col items-center p-4">
+<h1 class="text-2xl font-bold mb-4">🍵 Ochaya - Social Detox</h1>
+
+<div id="auth-container" class="bg-white p-4 rounded shadow-md w-full max-w-md">
+  <h2 class="font-semibold mb-2">สมัคร / เข้าสู่ระบบ</h2>
+  <input id="email" type="email" placeholder="Email" class="w-full p-2 border mb-2 rounded">
+  <input id="password" type="password" placeholder="Password" class="w-full p-2 border mb-2 rounded">
+  <div class="flex justify-between">
+    <button onclick="signUp()" class="bg-green-500 text-white px-4 py-2 rounded">สมัครสมาชิก</button>
+    <button onclick="signIn()" class="bg-blue-500 text-white px-4 py-2 rounded">เข้าสู่ระบบ</button>
+  </div>
+  <div id="auth-msg" class="mt-2 text-red-500"></div>
+</div>
+
+<div id="app-container" class="hidden w-full max-w-md mt-6 space-y-4">
+  <div class="bg-white p-4 rounded shadow text-center">
+    <div>เวลาพักวันนี้: <span id="daily-rest">0</span> นาที</div>
+    <div>แต้ม: <span id="points">0</span></div>
+  </div>
+
+  <div class="bg-white p-4 rounded shadow space-y-2">
+    <h2 class="font-semibold">เลือกเวลา</h2>
+    <div class="flex space-x-2 mb-2">
+      <button onclick="setTimer(5)" class="bg-green-100 px-3 py-1 rounded">5 นาที</button>
+      <button onclick="setTimer(10)" class="bg-green-100 px-3 py-1 rounded">10 นาที</button>
+      <button onclick="setTimer(15)" class="bg-green-100 px-3 py-1 rounded">15 นาที</button>
+    </div>
+    <div class="flex space-x-2 items-center">
+      <input id="custom-time" type="number" placeholder="ตั้งเวลาเอง (นาที)" class="border p-1 rounded w-32">
+      <button onclick="setCustomTimer()" class="bg-blue-100 px-3 py-1 rounded">ตั้งเวลา</button>
+    </div>
+    <div class="text-center mt-2 text-xl font-bold" id="timer-display">00:00</div>
+    <div class="flex justify-center space-x-2 mt-2">
+      <button id="start-btn" onclick="startTimer()" class="bg-green-500 text-white px-4 py-2 rounded">เริ่มพัก</button>
+      <button id="pause-btn" onclick="pauseTimer()" class="bg-yellow-500 text-white px-4 py-2 rounded hidden">หยุดชั่วคราว</button>
+      <button onclick="resetTimer()" class="bg-gray-500 text-white px-4 py-2 rounded">รีเซ็ต</button>
+    </div>
+  </div>
+
+  <div class="bg-white p-4 rounded shadow space-y-2">
+    <h2 class="font-semibold">เสียงผ่อนคลาย</h2>
+    <div class="flex flex-col space-y-2">
+      <button onclick="playSound('rain')" id="rain-btn" class="bg-blue-300 px-3 py-1 rounded">🌧️ เสียงฝน</button>
+      <button onclick="playSound('forest')" id="forest-btn" class="bg-green-300 px-3 py-1 rounded">🍃 เสียงป่า</button>
+      <button onclick="playSound('water')" id="water-btn" class="bg-orange-300 px-3 py-1 rounded">🫖 เสียงน้ำเดือด</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// Firebase config
+const firebaseConfig = {
+  apiKey: "AIzaSyCAqZOGyZto9htcOjnIhtC1Vrsk4yHnA-E",
+  authDomain: "my-time-3345e.firebaseapp.com",
+  projectId: "my-time-3345e",
+  storageBucket: "my-time-3345e.firebasestorage.app",
+  messagingSenderId: "366617717054",
+  appId: "1:366617717054:web:1fcda1a8a8cde8c8c7e46f",
+  measurementId: "G-QC20JDZQHT"
+};
+firebase.initializeApp(firebaseConfig);
+const auth = firebase.auth();
+const db = firebase.firestore();
+
+let currentAudio = null;
+let timerInterval = null;
+let timeLeft = 0;
+let totalTime = 0;
+let isRunning = false;
+
+function signUp(){
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  auth.createUserWithEmailAndPassword(email,password)
+    .then(userCredential=>{
+      db.collection('users').doc(userCredential.user.uid).set({
+        points:0,
+        dailyRest:0
+      });
+      showApp();
+    })
+    .catch(err=>document.getElementById('auth-msg').innerText=err.message);
+}
+
+function signIn(){
+  const email = document.getElementById('email').value;
+  const password = document.getElementById('password').value;
+  auth.signInWithEmailAndPassword(email,password)
+    .then(showApp)
+    .catch(err=>document.getElementById('auth-msg').innerText=err.message);
+}
+
+function showApp(){
+  document.getElementById('auth-container').classList.add('hidden');
+  document.getElementById('app-container').classList.remove('hidden');
+  loadUserData();
+}
+
+let userData={points:0,dailyRest:0};
+
+function loadUserData(){
+  const user = auth.currentUser;
+  if(!user) return;
+  db.collection('users').doc(user.uid).get().then(doc=>{
+    if(doc.exists){
+      userData = doc.data();
+      updateUI();
+    }
+  });
+}
+
+function updateUI(){
+  document.getElementById('points').innerText=userData.points;
+  document.getElementById('daily-rest').innerText=userData.dailyRest;
+}
+
+function saveUserData(){
+  const user = auth.currentUser;
+  if(!user) return;
+  db.collection('users').doc(user.uid).set(userData);
+}
+
+// Timer functions
+function setTimer(min){
+  timeLeft=min*60;
+  totalTime=min*60;
+  updateTimerDisplay();
+}
+function setCustomTimer(){
+  const val=parseInt(document.getElementById('custom-time').value);
+  if(val>0) setTimer(val);
+}
+function updateTimerDisplay(){
+  const m=Math.floor(timeLeft/60);
+  const s=timeLeft%60;
+  document.getElementById('timer-display').innerText=`${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}`;
+}
+function startTimer(){
+  if(isRunning) return;
+  if(timeLeft<=0) return alert('กรุณาเลือกเวลา');
+  isRunning=true;
+  document.getElementById('start-btn').classList.add('hidden');
+  document.getElementById('pause-btn').classList.remove('hidden');
+  timerInterval=setInterval(()=>{
+    timeLeft--;
+    updateTimerDisplay();
+    if(timeLeft<=0){
+      completeTimer();
+    }
+  },1000);
+}
+function pauseTimer(){
+  isRunning=false;
+  clearInterval(timerInterval);
+  document.getElementById('start-btn').classList.remove('hidden');
+  document.getElementById('pause-btn').classList.add('hidden');
+}
+function resetTimer(){
+  isRunning=false;
+  clearInterval(timerInterval);
+  timeLeft=totalTime;
+  updateTimerDisplay();
+  document.getElementById('start-btn').classList.remove('hidden');
+  document.getElementById('pause-btn').classList.add('hidden');
+}
+function completeTimer(){
+  pauseTimer();
+  const minutes=Math.floor(totalTime/60);
+  userData.points+=minutes*10;
+  userData.dailyRest+=minutes;
+  saveUserData();
+  updateUI();
+  alert(`🎉 คุณพักครบ ${minutes} นาที ได้รับ ${minutes*10} แต้ม`);
+  resetTimer();
+}
+
+// Sounds
+const sounds = {
+  rain:'https://www.soundjay.com/nature/rain-01.mp3',
+  forest:'https://www.soundjay.com/nature/forest-1.mp3',
+  water:'https://www.soundjay.com/nature/water-1.mp3'
+};
+function playSound(type){
+  if(currentAudio){currentAudio.pause();currentAudio=null;resetSoundButtons();}
+  if(currentAudio && currentAudio.src===sounds[type]) return;
+  currentAudio=new Audio(sounds[type]);
+  currentAudio.loop=true;
+  currentAudio.volume=0.5;
+  currentAudio.play();
+  document.getElementById(type+'-btn').innerText='⏹️ หยุด';
+}
+function resetSoundButtons(){
+  ['rain','forest','water'].forEach(t=>{
+    document.getElementById(t+'-btn').innerText=document.getElementById(t+'-btn').innerText.replace('⏹️ หยุด',t==='rain'?'🌧️ เสียงฝน':t==='forest'?'🍃 เสียงป่า':'🫖 เสียงน้ำเดือด');
+  });
+}
+
+// Auto-load if user is already logged in
+auth.onAuthStateChanged(user=>{
+  if(user) showApp();
+});
+</script>
+</body>
+</html>
